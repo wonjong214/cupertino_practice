@@ -1,9 +1,17 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
-
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+//import 'package:path_provider/path_provider.dart';
+
+
+const String baseUri = "http://43.201.9.0:8081";
+const int targetWidth = 48;
+const int targetHeight = 48;
 
 class CameraView extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -19,9 +27,13 @@ class _CameraViewState extends State<CameraView> {
   late CameraController controller;
   bool isFrontCamera = false;
   bool isFlashOn = false;
+  File? responseImage;
 
-  void setCamera(bool isFront){
-    controller = CameraController(isFront ? widget.cameras.last: widget.cameras.first, ResolutionPreset.max, enableAudio: false);
+  void setCamera(bool isFront) {
+    controller = CameraController(
+        isFront ? widget.cameras.last : widget.cameras.first,
+        ResolutionPreset.max,
+        enableAudio: false);
 
     controller.initialize().then((_) {
       // 카메라가 작동되지 않을 경우
@@ -35,7 +47,7 @@ class _CameraViewState extends State<CameraView> {
 
       });
     })
-    // 카메라 오류 시
+        // 카메라 오류 시
         .catchError((Object e) {
       if (e is CameraException) {
         switch (e.code) {
@@ -52,31 +64,43 @@ class _CameraViewState extends State<CameraView> {
     });
   }
 
-
   @override
   void initState() {
     super.initState();
     // 사용 가능한 카메라 확인
     setCamera(isFrontCamera);
-
   }
 
   // 사진을 찍는 함수
   Future<void> _takePicture() async {
-    if (!controller.value.isInitialized) {
+    if (!controller.value.isInitialized || controller == null) {
       return;
     }
 
     try {
       // 사진 촬영
-      final XFile file = await controller.takePicture();
+      late final XFile? _reduceFile;
+      late final File? _resizeFile;
+      final file = await controller.takePicture();
+      /*_reduceFile = await compressFile(file);
+      if(_reduceFile != null) {
+        _resizeFile = await resizeImage(_reduceFile!);
+      }
+      if(_resizeFile != null){
+        await uploadImage(_resizeFile);
+        setState(() {
+          responseImage = _resizeFile;
+        });
+      }*/
 
-      final path = file.path;
-      final bytes = await File(path).readAsBytes();
-      final img.Image? image = img.decodeImage(bytes);
-      
+      /*else
+        return;*/
 
-      /*// import 'dart:io';
+
+      /*//final bytes = await File(path).readAsBytes();
+      //final img.Image? image = img.decodeImage(bytes);
+
+      // import 'dart:io';
       // 사진을 저장할 경로 : 기본경로(storage/emulated/0/)
       Directory directory = Directory('storage/emulated/0/DCIM/MyImages');
 
@@ -90,6 +114,74 @@ class _CameraViewState extends State<CameraView> {
       print('Error taking picture: $e');
     }
   }
+  Future<void> uploadImage(File file) async {
+
+    try{
+      // 파일 경로를 통해 formData 생성
+      var dio = Dio();
+      var formData = FormData.fromMap({
+        'multipartFile' : await MultipartFile.fromFile(file.path)
+      });
+
+      // 업로드 요청
+      final response = await dio.post(baseUri + '/image-upload', data: formData);
+      if(response.statusCode != 200){
+        print(await response.statusMessage);
+      }
+      print(response.data.toString());
+      //dynamic imageMap = jsonDecode(response.data.toString());
+
+      //print("upload response${imageMap['imageUrl']}");
+      /*setState(() {
+        responseImage = response.data;
+      });*/
+
+      return;
+    }
+    catch(e){
+      print('Error taking picture: $e');
+    }
+  }
+
+  /*Future<File?> resizeImage (XFile _image) async{
+    late final img.Image resizedImage;
+    final path = _image.path;
+    final bytes = await File(path).readAsBytes();
+    final img.Image? image = img.decodeImage(bytes);
+
+    if(image != null){
+      resizedImage = img.copyResize(image, width: targetWidth, height: targetHeight);
+      String tempPath = (await getTemporaryDirectory()).path;
+      return File(tempPath).writeAsBytes(img.encodePng(resizedImage));
+    }
+    else{
+      return null;
+    }
+
+  }*/
+
+  Future<XFile?> compressFile(XFile file) async {
+
+    final filePath = file.path;
+
+    // Create output file path
+    // eg:- "Volume/VM/abcd_out.jpeg"
+    final lastIndex = filePath.lastIndexOf(new RegExp(r'.jp'));
+    final splitted = filePath.substring(0, (lastIndex));
+    final outPath = "${splitted}_out${filePath.substring(lastIndex)}";
+    var result = await FlutterImageCompress.compressAndGetFile(
+      file.path, outPath,
+      quality: 5,
+    );
+
+    if(result != null)
+    print(await result.length());
+    //print(file.lengthSync());
+    //print(result?lengthSync());
+
+    return result;
+  }
+
 
   @override
   void dispose() {
@@ -105,9 +197,7 @@ class _CameraViewState extends State<CameraView> {
       return SafeArea(
         child: Container(
           alignment: Alignment.center,
-          child: const Text(
-            '카메라 준비 안됨'
-          ),
+          child: const Text('카메라 준비 안됨'),
         ),
       );
     }
@@ -128,7 +218,11 @@ class _CameraViewState extends State<CameraView> {
               child: GestureDetector(
                 onTap: () {
                   // 사진 찍기 함수 호출
-                  _takePicture();
+                  _takePicture()
+                      .then((value) => print("takepicutre finish"))
+                      .catchError((Object e) {
+                    print('Error during take picture: $e');
+                  });
                 },
                 // 버튼으로 표시될 Icon
                 child: const Icon(
@@ -143,7 +237,7 @@ class _CameraViewState extends State<CameraView> {
           child: Padding(
             padding: const EdgeInsets.all(15),
             child: GestureDetector(
-              onTap: (){
+              onTap: () {
                 isFrontCamera = !isFrontCamera;
                 setCamera(isFrontCamera);
               },
@@ -160,10 +254,11 @@ class _CameraViewState extends State<CameraView> {
           child: Padding(
             padding: const EdgeInsets.all(15),
             child: GestureDetector(
-              onTap: (){
+              onTap: () {
                 setState(() {
                   isFlashOn = !isFlashOn;
-                  controller.setFlashMode(isFlashOn ? FlashMode.always : FlashMode.off);
+                  controller.setFlashMode(
+                      isFlashOn ? FlashMode.always : FlashMode.off);
                 });
               },
               child: Icon(
@@ -172,7 +267,15 @@ class _CameraViewState extends State<CameraView> {
               ),
             ),
           ),
-        )
+        ),
+        responseImage != null ? Align(
+          alignment: Alignment.center,
+          child: Image.file(
+            responseImage!,
+            width: 48,
+            height: 48,
+          ),
+        ) : Container(width: 48, height: 48,)
       ],
     );
   }

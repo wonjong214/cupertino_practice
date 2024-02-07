@@ -38,6 +38,10 @@ dependencies:
   camera: ^0.10.5+9
   image_picker: ^1.0.7
   image: ^4.1.4
+  dio: ^5.4.0
+  flutter_image_compress: ^2.0.0
+  http: ^1.2.0
+  path_provider: ^2.1.2
 
 
 dev_dependencies:
